@@ -1,33 +1,48 @@
 import cv2
+import threading
 
-def play_video(video_path):
-    # Open the video file
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        print(f"Error opening video file {video_path}")
-        return
+# Global variable to keep track of the current video file
+current_video = 'video/iklan/1.mp4'
+play_video = True
 
-    # Get the frame rate of the video
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_delay = int(1000 / fps)  # Convert frame rate to milliseconds
+def video_player():
+    global play_video, current_video
+    while True:
+        # Open the video file
+        cap = cv2.VideoCapture(current_video)
+        
+        if not cap.isOpened():
+            print(f"Error opening video file {current_video}")
+            return
+        
+        while play_video and cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            cv2.imshow('Video Playback', frame)
+            
+            # Wait for 25ms before moving to next frame
+            # This is to simulate 40fps (25ms/frame)
+            if cv2.waitKey(25) & 0xFF == ord('q'):
+                play_video = False
+                break
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            continue
+        cap.release()
+        cv2.destroyAllWindows()
 
-        # Display the resulting frame
-        cv2.imshow('Video Player', frame)
-
-        # Add delay to match the video's frame rate
-        if cv2.waitKey(frame_delay) & 0xFF == ord('q'):
-            break
-
-    # Release the capture and close all windows
-    cap.release()
-    cv2.destroyAllWindows()
+def command_listener():
+    global current_video, play_video
+    while True:
+        cmd = input("Enter new video number: ")
+        new_video = f"video/iklan/{cmd}.mp4"
+        play_video = False
+        current_video = new_video
+        play_video = True
 
 if __name__ == "__main__":
-    video_path = 'path/to/your/video.mp4'  # Replace with your video path
-    play_video(video_path)
+    # Create and start the video player thread
+    video_thread = threading.Thread(target=video_player)
+    video_thread.start()
+    
+    # Start the command listener in the main thread
+    command_listener()

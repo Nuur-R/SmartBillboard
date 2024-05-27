@@ -1,66 +1,134 @@
 import cv2
+import supervision as sv  # Assuming supervision library is available
 from ultralytics import YOLO
 import numpy as np
-import matplotlib.pyplot as plt
 
-# Load the YOLOv8 model
-model = YOLO('models/yolov8s.pt')
+# Define the polygon coordinates
+polygon = np.array([
+    [329, 1028],
+    [763, 347],
+    [883, 348],
+    [1416, 1019],
+])
 
-# Open the video file
-video_path = "Video/20240524_071138.mp4"
-cap = cv2.VideoCapture(video_path)
+# Define text properties
+FONT_SCALE = 1  # Font size for text
+TEXT_COLOR = (0, 255, 0)  # Text color (BGR)
+TEXT_THICKNESS = 2  # Text thickness
 
-# Define the polygon area (example polygon coordinates)
-polygon_points = np.array([[100, 100], [500, 100], [500, 400], [100, 400]])
+def initialize_model(model_path):
+    """
+    Initialize the YOLO model.
+    
+    Args:
+        model_path (str): Path to the YOLO model weights.
+    
+    Returns:
+        model: Loaded YOLO model.
+    """
+    return YOLO(model_path)
 
-# Cek apakah video berhasil dibuka
-if not cap.isOpened():
-    print(f"Error: Tidak dapat membuka video {video_path}")
-else:
-    # Loop through the video frames
-    while cap.isOpened():
-        # Read a frame from the video
-        success, frame = cap.read()
+def process_frame(frame, model, zone):
+    """
+    Process a single frame for object detection and annotation.
+    
+    Args:
+        frame (ndarray): Input frame from the video.
+        model (model): YOLO model for object detection.
+        zone (PolygonZone): PolygonZone object for defining detection area.
+    
+    Returns:
+        annotated_frame (ndarray): Annotated frame with bounding boxes and labels.
+        class_counts (dict): Dictionary with counts of detected classes.
+    """
+    results = model(frame)[0]
+    detections = sv.Detections.from_ultralytics(results)
+    mask = zone.trigger(detections=detections)
+    detections = detections[np.isin(detections.class_id, [2, 3]) & mask]
 
-        if success:
-            # Run YOLOv8 inference on the frame
-            results = model(frame)
-
-            # Filter results based on polygon area
-            filtered_results = []
-            for result in results:
-                for detection in result.boxes:
-                    bbox = detection.xyxy[0].cpu().numpy().astype(int)
-                    center_x = int((bbox[0] + bbox[2]) // 2)
-                    center_y = int((bbox[1] + bbox[3]) // 2)
-                    if cv2.pointPolygonTest(polygon_points, (center_x, center_y), False) >= 0:
-                        filtered_results.append(detection)
-
-            # Draw the polygon area on the frame
-            cv2.polylines(frame, [polygon_points], isClosed=True, color=(0, 255, 0), thickness=2)
-
-            # Visualize the filtered results on the frame
-            for detection in filtered_results:
-                bbox = detection.xyxy[0].cpu().numpy().astype(int)
-                label = result.names[detection.cls[0].cpu().item()]
-                confidence = detection.conf[0].cpu().item()
-
-                x1, y1, x2, y2 = bbox
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                cv2.putText(frame, f"{label} {confidence:.2f}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-
-            # Display the annotated frame using matplotlib
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            plt.imshow(frame_rgb)
-            plt.axis('off')
-            plt.show()
-
-            # Break the loop if 'q' is pressed
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+    class_counts = {}
+    for class_name in detections['class_name']:
+        if class_name in class_counts:
+            class_counts[class_name] += 1
         else:
-            # Break the loop if the end of the video is reached
+            class_counts[class_name] = 1
+
+    labels = [
+        f"{class_name} {confidence:.2f}"
+        for class_name, confidence
+        in zip(detections['class_name'], detections.confidence)
+    ]
+
+    bounding_box_annotator = sv.BoundingBoxAnnotator()
+    label_annotator = sv.LabelAnnotator()
+    annotated_frame = bounding_box_annotator.annotate(scene=frame, detections=detections)
+    annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
+    annotated_frame = sv.draw_polygon(scene=frame, polygon=polygon, color=sv.Color.red(), thickness=6)
+
+    return annotated_frame, class_counts
+
+def display_frame(frame, class_counts, text_position=(20, 20)):
+    """
+    Display the frame with text annotations.
+    
+    Args:
+        frame (ndarray): Frame to be displayed.
+        class_counts (dict): Dictionary with counts of detected classes.
+        text_position (tuple, optional): Position for displaying text. Defaults to (20, 20).
+    """
+    for class_name, count in class_counts.items():
+        line = f"{class_name}: {count}"
+        cv2.putText(frame, line, text_position, cv2.FONT_HERSHEY_SIMPLEX, FONT_SCALE, TEXT_COLOR, TEXT_THICKNESS)
+        text_position = (text_position[0], text_position[1] + 30)  # Adjust y-coordinate for each line
+
+    window_name = "Frame"
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.imshow(window_name, frame)
+
+def write_state_to_file(class_counts, filename='state.txt'):
+    """
+    Write the class name with the highest count to a file.
+    
+    Args:
+        class_counts (dict): Dictionary with counts of detected classes.
+        filename (str, optional): Name of the file to write the state to. Defaults to 'state.txt'.
+    """
+    if not class_counts:
+        return
+    
+    most_common_class = max(class_counts, key=class_counts.get)
+    with open(filename, 'w') as file:
+        file.write(most_common_class)
+
+def read_video_and_annotate(video_path, model_path='models/yolov8s.pt'):
+    """
+    Reads a video file, performs object detection using YOLO, and displays the results with bounding boxes and labels.
+    
+    Args:
+        video_path (str): Path to the video file.
+        model_path (str, optional): Path to the YOLO model weights. Defaults to 'models/yolov8n.pt'.
+    """
+    video_info = sv.VideoInfo.from_video_path(video_path)
+    zone = sv.PolygonZone(polygon=polygon, frame_resolution_wh=video_info.resolution_wh)
+    model = initialize_model(model_path)
+    
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print("Error opening video stream or file")
+        return
+
+    while True:
+        ret, frame = cap.read()
+        if not ret or cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-    # Release the video capture object and close the display window
+        annotated_frame, class_counts = process_frame(frame, model, zone)
+        display_frame(annotated_frame, class_counts)
+        write_state_to_file(class_counts)
+
     cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    video_path = 'video/1.mp4'  # Replace with your video path
+    read_video_and_annotate(video_path)

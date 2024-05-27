@@ -17,4 +17,5 @@ ultralytics==8.2.22
 ```sh
 videoCompressor | ffmpeg-python==0.2.0
 videoStabilizer | vidstab==1.7.4
+ImageScraping | bing-image-downloader==1.1.2
 ```

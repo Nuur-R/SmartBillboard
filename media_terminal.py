@@ -1,9 +1,8 @@
 import cv2
 import threading
-import time
 
 # Global variable to keep track of the current video file
-current_video = 'video/iklan/motorcycle.mp4'
+current_video = 'video/iklan/1.mp4'
 play_video = True
 
 def video_player():
@@ -34,19 +33,11 @@ def video_player():
 def command_listener():
     global current_video, play_video
     while True:
-        try:
-            with open('state.txt', 'r') as file:
-                cmd = file.read().strip()
-                if cmd:
-                    new_video = f"video/iklan/{cmd}.mp4"
-                    if new_video != current_video:
-                        play_video = False
-                        current_video = new_video
-                        play_video = True
-            time.sleep(2)  # wait for 2 seconds before reading the file again
-        except Exception as e:
-            print(f"Error reading state file: {e}")
-            time.sleep(2)  # wait for 2 seconds before retrying
+        cmd = input("Enter new video number: ")
+        new_video = f"video/iklan/{cmd}.mp4"
+        play_video = False
+        current_video = new_video
+        play_video = True
 
 if __name__ == "__main__":
     # Create and start the video player thread

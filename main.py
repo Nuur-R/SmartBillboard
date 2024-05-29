@@ -5,10 +5,10 @@ import numpy as np
 
 # Define the polygon coordinates
 polygon = np.array([
-    [329, 1028],
-    [763, 347],
-    [883, 348],
-    [1416, 1019],
+    [84, 1064],
+    [1090, 418],
+    [1247, 419],
+    [989, 1059],
 ])
 
 # Define text properties
@@ -130,5 +130,5 @@ def read_video_and_annotate(video_path, model_path='models/yolov8s.pt'):
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    video_path = 'video/1.mp4'  # Replace with your video path
+    video_path = 'video/3s.mp4'  # Replace with your video path
     read_video_and_annotate(video_path)
